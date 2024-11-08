@@ -4,12 +4,14 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report
 from keras import backend as K
 import sys
 import ast
+import matplotlib.pyplot as plt
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -17,9 +19,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 K.clear_session()
 
 relevant_channels = [
-    'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
-    'Thor', 'Abdo', 'Snore', 'Pulse', 'Respiratory Rate',
-    'F3', 'F4', 'C3', 'C4', 'O1', 'O2'
+    'F3', 'Nasal Pressure', 'Chin3', 'SpO2', 'E2', 'Pulse', 'Chin2', 'ECG1', 'Chin1' 
 ]
 
 # Define a fixed sequence length for padding/truncating
@@ -64,7 +64,7 @@ def load_data(csv_file, sequence_length):
     return features, labels
 
 # Load data
-csv_file = '16_channels.csv'
+csv_file = '9_channels.csv'
 X, y = load_data(csv_file, sequence_length)
 
 # Encode labels
@@ -79,16 +79,16 @@ X_train, X_test, y_train, y_test = train_test_split(X, y_categorical, test_size=
 X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], X_train.shape[2]))
 X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], X_test.shape[2]))
 
-# Define the 1D CNN model
+# Define the 1D CNN model with reduced complexity
 model = Sequential([
-    Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(X_train.shape[1], X_train.shape[2])),
+    Conv1D(filters=32, kernel_size=3, activation='relu', input_shape=(X_train.shape[1], X_train.shape[2])),
     MaxPooling1D(pool_size=2),
     Dropout(0.5),
-    Conv1D(filters=128, kernel_size=3, activation='relu'),
+    Conv1D(filters=64, kernel_size=3, activation='relu'),
     MaxPooling1D(pool_size=2),
     Dropout(0.5),
     Flatten(),
-    Dense(128, activation='relu'),
+    Dense(64, activation='relu'),
     Dropout(0.5),
     Dense(y_categorical.shape[1], activation='softmax')
 ])
@@ -96,8 +96,12 @@ model = Sequential([
 # Compile the model
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-# Train the model
-history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
+# Add early stopping and learning rate reduction callbacks
+early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=1e-5)
+
+# Train the model with callbacks
+history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test), callbacks=[early_stopping, reduce_lr])
 
 # Evaluate the model
 loss, accuracy = model.evaluate(X_test, y_test)
@@ -114,12 +118,31 @@ report = classification_report(y_true_classes, y_pred_classes, target_names=targ
 print(report)
 print(f'Test Accuracy: {accuracy:.4f}')
 
+# Plot training history
+def plot_history(history):
+    plt.figure(figsize=(12, 4))
+    
+    # Plot training & validation accuracy values
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['val_accuracy'])
+    plt.title('Model accuracy')
+    plt.ylabel('Accuracy')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Test'], loc='upper left')
+    
+    # Plot training & validation loss values
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Model loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Test'], loc='upper left')
+    
+    plt.show()
+
+plot_history(history)
+
 # Save the model
 # model.save('cnn_model.h5')
-
-# Example usage
-# Load the model
-# model = tf.keras.models.load_model('cnn_model.h5')
-
-# Predict on new data
-# predictions = model.predict(new_data)

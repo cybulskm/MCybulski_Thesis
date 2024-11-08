@@ -2,14 +2,17 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout, LSTM
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout, LSTM, BatchNormalization
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report
 from keras import backend as K
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import sys
 import ast
+import matplotlib.pyplot as plt
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -18,10 +21,7 @@ K.clear_session()
 
 # Load the data
 relevant_channels = [
-    'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
-    'Thor', 'Abdo', 'Snore', 'Pulse', 'Respiratory Rate',
-    'F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'E1', 'E2',
-    'Chin1', 'Chin2', 'Chin3'
+    'F3', 'Nasal Pressure', 'Chin3', 'SpO2', 'E2', 'Pulse', 'Chin2', 'ECG1', 'Chin1' 
 ]
 
 # Define a fixed sequence length for padding/truncating
@@ -66,7 +66,7 @@ def load_data(csv_file, sequence_length):
     return features, labels
 
 # Load data
-csv_file = 'sample_data_2.csv'
+csv_file = '9_channels.csv'
 X, y = load_data(csv_file, sequence_length)
 
 # Encode labels
@@ -81,28 +81,39 @@ X_train, X_test, y_train, y_test = train_test_split(X, y_categorical, test_size=
 X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], X_train.shape[2]))
 X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], X_test.shape[2]))
 
-# Define the 1D CNN-LSTM model
+# Define the 1D CNN-LSTM model with regularization and batch normalization
 model = Sequential([
-    Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(X_train.shape[1], X_train.shape[2])),
+    Conv1D(filters=32, kernel_size=3, activation='relu', input_shape=(X_train.shape[1], X_train.shape[2]), kernel_regularizer=l2(0.001)),
+    BatchNormalization(),
     MaxPooling1D(pool_size=2),
     Dropout(0.5),
-    Conv1D(filters=128, kernel_size=3, activation='relu'),
+    
+    Conv1D(filters=64, kernel_size=3, activation='relu', kernel_regularizer=l2(0.001)),
+    BatchNormalization(),
     MaxPooling1D(pool_size=2),
     Dropout(0.5),
-    LSTM(64, return_sequences=True),  # Adding LSTM layer with 64 units
+    
+    LSTM(64, return_sequences=True, kernel_regularizer=l2(0.001)),
     Dropout(0.5),
-    LSTM(32),  # Adding another LSTM layer with 32 units
+    
+    LSTM(32, kernel_regularizer=l2(0.001)),
     Dropout(0.5),
-    Dense(128, activation='relu'),
+    
+    Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
     Dropout(0.5),
+    
     Dense(y_categorical.shape[1], activation='softmax')
 ])
 
 # Compile the model
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-# Train the model
-history = model.fit(X_train, y_train, epochs=200, batch_size=32, validation_data=(X_test, y_test))
+# Define early stopping and learning rate reduction callbacks
+early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6)
+
+# Train the model with callbacks
+history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test), callbacks=[early_stopping, reduce_lr])
 
 # Evaluate the model
 loss, accuracy = model.evaluate(X_test, y_test)
@@ -118,6 +129,32 @@ target_names = label_encoder.inverse_transform(unique_labels)
 report = classification_report(y_true_classes, y_pred_classes, target_names=target_names)
 print(report)
 print(f'CNN-LSTM Test Accuracy: {accuracy:.4f}')
+
+# Plot training history
+def plot_history(history):
+    plt.figure(figsize=(12, 4))
+    
+    # Plot training & validation accuracy values
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['val_accuracy'])
+    plt.title('Model accuracy')
+    plt.ylabel('Accuracy')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Test'], loc='upper left')
+    
+    # Plot training & validation loss values
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Model loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Test'], loc='upper left')
+    
+    plt.show()
+
+plot_history(history)
 
 # Save the model
 # model.save('cnn_lstm_model.h5')

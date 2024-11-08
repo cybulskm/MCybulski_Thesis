@@ -6,12 +6,10 @@ from sklearn.preprocessing import StandardScaler
 
 # Define the relevant channels for sleep apnea diagnosis
 relevant_channels = [
-    'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
-    'Thor', 'Abdo', 'Snore', 'Pulse', 'Respiratory Rate',
-    'F3', 'F4', 'C3', 'C4', 'O1', 'O2'
+    'F3', 'Nasal Pressure', 'Chin3', 'SpO2', 'E2', 'Pulse', 'Chin2', 'ECG1', 'Chin1' 
 ]
 relevant_events = [  
-  "Hypopnea", "Central Apnea", "Obstructive Apnea", "Mixed Apnea"]
+  "Hypopnea", "Central Apnea", "Obstructive Apnea"]
 
 def extract_features_from_edf(file_path):
     edf_file = pyedflib.EdfReader(file_path)
@@ -154,7 +152,7 @@ file_pairs = [
     ('OSA-data/OSA AHI upper 30/4/4', 'OSA-data/OSA AHI upper 30/4/4.XML')
     ]
 
-output_csv_file = '16_channels.csv'
+output_csv_file = '9_channels.csv'
 
 # Process all EDF/XML pairs from the list and save to a CSV file
 process_files(file_pairs, output_csv_file)
