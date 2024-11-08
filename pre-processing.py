@@ -3,7 +3,6 @@ import numpy as np
 import pyedflib
 import xml.etree.ElementTree as ET
 from sklearn.preprocessing import StandardScaler
-
 # Define the relevant channels for sleep apnea diagnosis
 relevant_channels = [
     'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
@@ -19,28 +18,28 @@ def extract_features_from_edf(file_path):
     features = {channel: [] for channel in relevant_channels}
     sampling_rates = {}
     
+    # Check if all relevant channels are present
+    signal_labels = edf_file.getSignalLabels()
+    for channel in relevant_channels:
+        if channel not in signal_labels:
+            print(f"Channel {channel} not found in the EDF file. Skipping file.")
+            edf_file.close()
+            return None, None
+    
     # Extract data for each relevant channel and its sampling rate
     for channel in relevant_channels:
-        try:
-            signal_index = edf_file.getSignalLabels().index(channel)
-            signal_data = edf_file.readSignal(signal_index)
-            sampling_rate = edf_file.getSampleFrequency(signal_index)
-            features[channel] = signal_data
-            sampling_rates[channel] = sampling_rate
-        except ValueError:
-            print(f"Channel {channel} not found in the EDF file.")
-            features[channel] = None
-            sampling_rates[channel] = None
+        signal_index = signal_labels.index(channel)
+        signal_data = edf_file.readSignal(signal_index)
+        sampling_rate = edf_file.getSampleFrequency(signal_index)
+        features[channel] = signal_data
+        sampling_rates[channel] = sampling_rate
     
     edf_file.close()
     
     # Find the minimum length of all signals to ensure consistency
-    min_length = min(len(signal) for signal in features.values() if signal is not None)
+    min_length = min(len(signal) for signal in features.values())
     for channel in relevant_channels:
-        if features[channel] is not None:
-            features[channel] = features[channel][:min_length]
-        else:
-            features[channel] = [np.nan] * min_length  # Fill missing channels with NaN
+        features[channel] = features[channel][:min_length]
     
     features_df = pd.DataFrame(features)
     return features_df, sampling_rates
@@ -63,6 +62,9 @@ def parse_annotations(xml_file):
 
 def preprocess_and_label(edf_file_path, xml_file_path):
     features_df, sampling_rates = extract_features_from_edf(edf_file_path)
+    
+    if features_df is None:
+        return None  # Skip processing if any channel is missing
     
     # Normalize the data for each channel
     scaler = StandardScaler()
@@ -115,13 +117,16 @@ def process_files(file_pairs, output_csv):
     for edf_file, xml_file in file_pairs:
         print(f"Processing {edf_file} and {xml_file}")
         segments = preprocess_and_label(edf_file, xml_file)
+        
+        if segments is None:
+            continue  # Skip this file pair if any channel is missing
+        
         all_segments.extend(segments)
     
     # Save all segments to a single CSV file
     save_to_csv(all_segments, output_csv)
     print(f"Data has been saved to {output_csv}")
 
-# Example usage
 file_pairs = [
     ('CSA-data/CSA AHI 5-15/1/1', 'CSA-data/CSA AHI 5-15/1/1.XML'),
     ('CSA-data/CSA AHI 5-15/2/2', 'CSA-data/CSA AHI 5-15/2/2.XML'),
@@ -137,12 +142,25 @@ file_pairs = [
     ('CSA-data/CSA AHI lower 5/4/4', 'CSA-data/CSA AHI lower 5/4/4.XML'),
     ('CSA-data/CSA AHI upper 30/1/1', 'CSA-data/CSA AHI upper 30/1/1.XML'),
     ('CSA-data/CSA AHI upper 30/2/2', 'CSA-data/CSA AHI upper 30/2/2.XML'),
-    ('CSA-data/CSA AHI upper 30/4/4', 'CSA-data/CSA AHI upper 30/4/4.XML')
+    ('CSA-data/CSA AHI upper 30/4/4', 'CSA-data/CSA AHI upper 30/4/4.XML'),
+    ('OSA-data/OSA AHI 5-15/1/1', 'OSA-data/OSA AHI 5-15/1/1.XML'),
+    ('OSA-data/OSA AHI 5-15/2/2', 'OSA-data/OSA AHI 5-15/2/2.XML'),
+    ('OSA-data/OSA AHI 5-15/3/3', 'OSA-data/OSA AHI 5-15/3/3.XML'),
+    ('OSA-data/OSA AHI 5-15/4/4', 'OSA-data/OSA AHI 5-15/4/4.XML'),
+    ('OSA-data/OSA AHI 15-30/2/2', 'OSA-data/OSA AHI 15-30/2/2.XML'),
+    ('OSA-data/OSA AHI 15-30/3/3', 'OSA-data/OSA AHI 15-30/3/3.XML'),
+    ('OSA-data/OSA AHI 15-30/4/4', 'OSA-data/OSA AHI 15-30/4/4.XML'),
+    ('OSA-data/OSA AHI lower 5/1/1', 'OSA-data/OSA AHI lower 5/1/1.XML'),
+    ('OSA-data/OSA AHI lower 5/3/3', 'OSA-data/OSA AHI lower 5/3/3.XML'),
+    ('OSA-data/OSA AHI lower 5/4/4', 'OSA-data/OSA AHI lower 5/4/4.XML'),
+    ('OSA-data/OSA AHI upper 30/1/1', 'OSA-data/OSA AHI upper 30/1/1.XML'),
+    ('OSA-data/OSA AHI upper 30/2/2', 'OSA-data/OSA AHI upper 30/2/2.XML'),
+    ('OSA-data/OSA AHI upper 30/4/4', 'OSA-data/OSA AHI upper 30/4/4.XML')
     
     # Add more file pairs as needed
 ]
 
-output_csv_file = 'sample_data.csv'
+output_csv_file = 'sample_data_2.csv'
 
 # Process all EDF/XML pairs from the list and save to a CSV file
 process_files(file_pairs, output_csv_file)

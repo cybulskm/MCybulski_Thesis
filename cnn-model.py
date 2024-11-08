@@ -16,13 +16,10 @@ sys.stdout.reconfigure(encoding='utf-8')
 # Clear any previous session
 K.clear_session()
 
-# Load the data
-data = pd.read_csv('sample_data.csv')
 relevant_channels = [
     'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
     'Thor', 'Abdo', 'Snore', 'Pulse', 'Respiratory Rate',
-    'F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'E1', 'E2',
-    'Chin1', 'Chin2', 'Chin3'
+    'F3', 'F4', 'C3', 'C4', 'O1', 'O2'
 ]
 
 # Define a fixed sequence length for padding/truncating
@@ -67,7 +64,7 @@ def load_data(csv_file, sequence_length):
     return features, labels
 
 # Load data
-csv_file = 'sample_data.csv'
+csv_file = '16_channels.csv'
 X, y = load_data(csv_file, sequence_length)
 
 # Encode labels

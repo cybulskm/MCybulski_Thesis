@@ -8,8 +8,7 @@ from sklearn.preprocessing import StandardScaler
 relevant_channels = [
     'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
     'Thor', 'Abdo', 'Snore', 'Pulse', 'Respiratory Rate',
-    'F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'E1', 'E2',
-    'Chin1', 'Chin2', 'Chin3'
+    'F3', 'F4', 'C3', 'C4', 'O1', 'O2'
 ]
 relevant_events = [  
   "Hypopnea", "Central Apnea", "Obstructive Apnea", "Mixed Apnea"]
@@ -137,12 +136,25 @@ file_pairs = [
     ('CSA-data/CSA AHI lower 5/4/4', 'CSA-data/CSA AHI lower 5/4/4.XML'),
     ('CSA-data/CSA AHI upper 30/1/1', 'CSA-data/CSA AHI upper 30/1/1.XML'),
     ('CSA-data/CSA AHI upper 30/2/2', 'CSA-data/CSA AHI upper 30/2/2.XML'),
-    ('CSA-data/CSA AHI upper 30/4/4', 'CSA-data/CSA AHI upper 30/4/4.XML')
-    
-    # Add more file pairs as needed
-]
+    ('CSA-data/CSA AHI upper 30/4/4', 'CSA-data/CSA AHI upper 30/4/4.XML'),
+    ('OSA-data/OSA AHI 5-15/1/1', 'OSA-data/OSA AHI 5-15/1/1.XML'),
+    ('OSA-data/OSA AHI 5-15/2/2', 'OSA-data/OSA AHI 5-15/2/2.XML'),
+    ('OSA-data/OSA AHI 5-15/3/3', 'OSA-data/OSA AHI 5-15/3/3.XML'),
+    ('OSA-data/OSA AHI 5-15/4/4', 'OSA-data/OSA AHI 5-15/4/4.XML'),
+    ('OSA-data/OSA AHI 15-30/1/1', 'OSA-data/OSA AHI 15-30/1/1.XML'),
+    ('OSA-data/OSA AHI 15-30/2/2', 'OSA-data/OSA AHI 15-30/2/2.XML'),
+    ('OSA-data/OSA AHI 15-30/3/3', 'OSA-data/OSA AHI 15-30/3/3.XML'),
+    ('OSA-data/OSA AHI 15-30/4/4', 'OSA-data/OSA AHI 15-30/4/4.XML'),
+    ('OSA-data/OSA AHI lower 5/1/1', 'OSA-data/OSA AHI lower 5/1/1.XML'),
+    ('OSA-data/OSA AHI lower 5/2/2', 'OSA-data/OSA AHI lower 5/2/2.XML'),
+    ('OSA-data/OSA AHI lower 5/3/3', 'OSA-data/OSA AHI lower 5/3/3.XML'),
+    ('OSA-data/OSA AHI lower 5/4/4', 'OSA-data/OSA AHI lower 5/4/4.XML'),
+    ('OSA-data/OSA AHI upper 30/1/1', 'OSA-data/OSA AHI upper 30/1/1.XML'),
+    ('OSA-data/OSA AHI upper 30/2/2', 'OSA-data/OSA AHI upper 30/2/2.XML'),
+    ('OSA-data/OSA AHI upper 30/4/4', 'OSA-data/OSA AHI upper 30/4/4.XML')
+    ]
 
-output_csv_file = 'sample_data.csv'
+output_csv_file = '16_channels.csv'
 
 # Process all EDF/XML pairs from the list and save to a CSV file
 process_files(file_pairs, output_csv_file)

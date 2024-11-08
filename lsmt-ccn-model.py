@@ -17,7 +17,6 @@ sys.stdout.reconfigure(encoding='utf-8')
 K.clear_session()
 
 # Load the data
-data = pd.read_csv('sample_data.csv')
 relevant_channels = [
     'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
     'Thor', 'Abdo', 'Snore', 'Pulse', 'Respiratory Rate',
@@ -67,7 +66,7 @@ def load_data(csv_file, sequence_length):
     return features, labels
 
 # Load data
-csv_file = 'sample_data.csv'
+csv_file = 'sample_data_2.csv'
 X, y = load_data(csv_file, sequence_length)
 
 # Encode labels
@@ -103,7 +102,7 @@ model = Sequential([
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Train the model
-history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
+history = model.fit(X_train, y_train, epochs=200, batch_size=32, validation_data=(X_test, y_test))
 
 # Evaluate the model
 loss, accuracy = model.evaluate(X_test, y_test)
@@ -118,7 +117,7 @@ unique_labels = np.unique(y_true_classes)
 target_names = label_encoder.inverse_transform(unique_labels)
 report = classification_report(y_true_classes, y_pred_classes, target_names=target_names)
 print(report)
-print(f'Test Accuracy: {accuracy:.4f}')
+print(f'CNN-LSTM Test Accuracy: {accuracy:.4f}')
 
 # Save the model
 # model.save('cnn_lstm_model.h5')
