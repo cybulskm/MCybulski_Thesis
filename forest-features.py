@@ -7,14 +7,7 @@ from sklearn.metrics import classification_report
 import matplotlib.pyplot as plt
 import ast
 
-# Define relevant channels
-relevant_channels = [
-    'Airflow', 'Nasal Pressure', 'SpO2', 'ECG1', 'ECG2',
-    'Thor', 'Abdo', 'Snore', 'Pulse', 'Respiratory Rate',
-    'F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'E1', 'E2',
-    'Chin1', 'Chin2', 'Chin3'
-]
-
+relevant_channels = []
 # Load and preprocess data with padding/truncation
 def load_data(csv_file, sequence_length):
     df = pd.read_csv(csv_file)
@@ -29,6 +22,8 @@ def load_data(csv_file, sequence_length):
         event_data = []
         for col in df.columns:
             try:
+                if (col not in relevant_channels):
+                    relevant_channels.append(col)
                 # Handle 'nan' values and malformed strings
                 if pd.isna(row[col]):
                     channel_data = np.array([])
@@ -54,7 +49,7 @@ def load_data(csv_file, sequence_length):
     return features, labels
 
 # Load the data
-csv_file = 'sample_data_2.csv'
+csv_file = 'all_channels.csv'
 sequence_length = 60  # Adjust this based on your data's typical length
 X, y = load_data(csv_file, sequence_length)
 
@@ -86,9 +81,6 @@ for feature, importance in zip(flattened_feature_names, feature_importances):
 
 # Sort channels by importance
 sorted_channels = sorted(channel_importances.items(), key=lambda item: item[1], reverse=True)
-
-
-
 # Plot channel importances
 channels, importances = zip(*sorted_channels)
 plt.figure(figsize=(12, 6))
@@ -99,6 +91,7 @@ plt.show()
 
 # Select all channels
 top_channels = [channel for channel, _ in sorted_channels]
+print(top_channels)
 top_features_indices = [i for i, feature in enumerate(flattened_feature_names) if feature.split('_')[0] in top_channels]
 X_train_top = X_train[:, top_features_indices]
 X_test_top = X_test[:, top_features_indices]

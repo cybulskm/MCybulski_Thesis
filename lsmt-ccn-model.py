@@ -19,17 +19,15 @@ sys.stdout.reconfigure(encoding='utf-8')
 # Clear any previous session
 K.clear_session()
 
-# Load the data
-relevant_channels = [
-    'F3', 'Nasal Pressure', 'Chin3', 'SpO2', 'E2', 'Pulse', 'Chin2', 'ECG1', 'Chin1' 
-]
-
 # Define a fixed sequence length for padding/truncating
 sequence_length = 60  # Adjust this based on your data's typical length
 
 # Load and preprocess data with padding/truncation
-def load_data(csv_file, sequence_length):
+def load_data(csv_file, sequence_length, selected_features):
     df = pd.read_csv(csv_file)
+
+    # Filter the dataframe to include only the selected features
+    df = df[selected_features + ['Label']]
 
     # Separate features and labels
     labels = df['Label'].values
@@ -65,103 +63,99 @@ def load_data(csv_file, sequence_length):
     features = np.array(features)
     return features, labels
 
-# Load data
-csv_file = '9_channels.csv'
-X, y = load_data(csv_file, sequence_length)
-
-# Encode labels
-label_encoder = LabelEncoder()
-y_encoded = label_encoder.fit_transform(y)
-y_categorical = to_categorical(y_encoded)
-
-# Split the data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y_categorical, test_size=0.33, random_state=42)
-
-# Reshape the data for the 1D CNN and LSTM
-X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], X_train.shape[2]))
-X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], X_test.shape[2]))
-
 # Define the 1D CNN-LSTM model with regularization and batch normalization
-model = Sequential([
-    Conv1D(filters=32, kernel_size=3, activation='relu', input_shape=(X_train.shape[1], X_train.shape[2]), kernel_regularizer=l2(0.001)),
-    BatchNormalization(),
-    MaxPooling1D(pool_size=2),
-    Dropout(0.5),
+def create_model(input_shape, num_classes):
+    model = Sequential([
+        Conv1D(filters=32, kernel_size=3, activation='relu', input_shape=input_shape, kernel_regularizer=l2(0.001)),
+        BatchNormalization(),
+        MaxPooling1D(pool_size=2),
+        Dropout(0.5),
+        
+        Conv1D(filters=64, kernel_size=3, activation='relu', kernel_regularizer=l2(0.001)),
+        BatchNormalization(),
+        MaxPooling1D(pool_size=2),
+        Dropout(0.5),
+        
+        LSTM(64, return_sequences=True, kernel_regularizer=l2(0.001)),
+        Dropout(0.5),
+        
+        LSTM(32, kernel_regularizer=l2(0.001)),
+        Dropout(0.5),
+        
+        Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
+        Dropout(0.5),
+        
+        Dense(num_classes, activation='softmax')
+    ])
     
-    Conv1D(filters=64, kernel_size=3, activation='relu', kernel_regularizer=l2(0.001)),
-    BatchNormalization(),
-    MaxPooling1D(pool_size=2),
-    Dropout(0.5),
+    # Compile the model
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
-    LSTM(64, return_sequences=True, kernel_regularizer=l2(0.001)),
-    Dropout(0.5),
+    return model
+
+# Function to train and evaluate the model with given features
+def train_and_evaluate(csv_file, sequence_length, selected_features):
+    X, y = load_data(csv_file, sequence_length, selected_features)
+
+    # Encode labels
+    label_encoder = LabelEncoder()
+    y_encoded = label_encoder.fit_transform(y)
+    y_categorical = to_categorical(y_encoded)
+
+    # Split the data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y_categorical, test_size=0.33, random_state=42)
+
+    # Reshape the data for the 1D CNN-LSTM
+    X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], X_train.shape[2]))
+    X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], X_test.shape[2]))
+
+    # Create and compile the model
+    model = create_model((X_train.shape[1], X_train.shape[2]), y_categorical.shape[1])
+
+    # Add early stopping and learning rate reduction callbacks
+    early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=1e-5)
+
+    # Train the model with callbacks
+    history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test), callbacks=[early_stopping, reduce_lr])
+
+    # Evaluate the model
+    loss, accuracy = model.evaluate(X_test, y_test)
+
+    return accuracy
+
+# User selects the features they want to analyze from the CSV file
+selected_features = ['HRate', 'HR Sentec', 'Mic', 'Derived HR', 'NASAL KANUL', 'Sum', 'Pressure', 'C4', 'M2', 'Chin3', 'SENTEC CO2', 'Ox Status', 'E1', 'E2', 'LLeg2', 'A1', 'SENTEC HR', 'Chin1', 'OxStatus', 'Thermistor', 'LEG/R', 'O1', 'Oksijen Sentec', 'SpO2', 'SENTEC O2', 'Channel 51', 'Pleth', 'ManPos', 'A2', 'ECG1', 'C3', 'Nasal Pressure', 'RLeg1', 'Manual Pos', 'EMG1', 'HR', 'PTT', 'EMG2', 'F3', 'Respiratory Rate', 'Karbondioksit', 'Termistor', 'Pulse', 'LLeg1', 'O2', 'Abdo', 'ROC', 'RLeg2', 'CPAP Press', 'Snore', 'ECG2', 'Chin2', 'LOC', 'Position', 'Airflow', 'CPAP Flow', 'M1', 'F4']
+
+# Load data with selected features and perform binary search for feature selection
+csv_file = "all_channels.csv"
+accuracies = []
+percentages = []
+
+def binary_search_features(selected_features):
+    low = 0.25  # 25%
+    high = 1.0  # 100%
     
-    LSTM(32, kernel_regularizer=l2(0.001)),
-    Dropout(0.5),
+    while high - low > 0.05:  # Continue until the difference is small enough (5%)
+        mid = (low + high) / 2
+        
+        num_features_all = int(len(selected_features) * high)
+        num_features_mid = int(len(selected_features) * mid)
+        
+        accuracy_all = train_and_evaluate(csv_file, sequence_length, selected_features[:num_features_all])
+        accuracy_mid = train_and_evaluate(csv_file, sequence_length, selected_features[:num_features_mid])
+        
+        accuracies.append((high * 100, accuracy_all))
+        accuracies.append((mid * 100, accuracy_mid))
+        
+        if accuracy_mid > accuracy_all:
+            high = mid  # Choose fewer features if accuracy improves
+        else:
+            low = mid   # Choose more features if accuracy does not improve
     
-    Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
-    Dropout(0.5),
-    
-    Dense(y_categorical.shape[1], activation='softmax')
-])
+binary_search_features(selected_features)
 
-# Compile the model
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-
-# Define early stopping and learning rate reduction callbacks
-early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6)
-
-# Train the model with callbacks
-history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test), callbacks=[early_stopping, reduce_lr])
-
-# Evaluate the model
-loss, accuracy = model.evaluate(X_test, y_test)
-
-# Generate predictions
-y_pred = model.predict(X_test)
-y_pred_classes = np.argmax(y_pred, axis=1)
-y_true_classes = np.argmax(y_test, axis=1)
-
-# Generate classification report
-unique_labels = np.unique(y_true_classes)
-target_names = label_encoder.inverse_transform(unique_labels)
-report = classification_report(y_true_classes, y_pred_classes, target_names=target_names)
-print(report)
-print(f'CNN-LSTM Test Accuracy: {accuracy:.4f}')
-
-# Plot training history
-def plot_history(history):
-    plt.figure(figsize=(12, 4))
-    
-    # Plot training & validation accuracy values
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['accuracy'])
-    plt.plot(history.history['val_accuracy'])
-    plt.title('Model accuracy')
-    plt.ylabel('Accuracy')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Test'], loc='upper left')
-    
-    # Plot training & validation loss values
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['loss'])
-    plt.plot(history.history['val_loss'])
-    plt.title('Model loss')
-    plt.ylabel('Loss')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Test'], loc='upper left')
-    
-    plt.show()
-
-plot_history(history)
-
-# Save the model
-# model.save('cnn_lstm_model.h5')
-
-# Example usage
-# Load the model
-# model = tf.keras.models.load_model('cnn_lstm_model.h5')
-
-# Predict on new data
-# predictions = model.predict(new_data)
+# Print all accuracies and corresponding percentages of channels used
+for percentage, accuracy in accuracies:
+    print("LSTM-CCN Model")
+    print(f"Accuracy: {accuracy:.4f} with {percentage:.2f}% of channels")
