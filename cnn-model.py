@@ -116,35 +116,15 @@ def train_and_evaluate(csv_file, sequence_length, selected_features):
 # User selects the features they want to analyze from the CSV file
 selected_features = ['HRate', 'HR Sentec', 'Mic', 'Derived HR', 'NASAL KANUL', 'Sum', 'Pressure', 'C4', 'M2', 'Chin3', 'SENTEC CO2', 'Ox Status', 'E1', 'E2', 'LLeg2', 'A1', 'SENTEC HR', 'Chin1', 'OxStatus', 'Thermistor', 'LEG/R', 'O1', 'Oksijen Sentec', 'SpO2', 'SENTEC O2', 'Channel 51', 'Pleth', 'ManPos', 'A2', 'ECG1', 'C3', 'Nasal Pressure', 'RLeg1', 'Manual Pos', 'EMG1', 'HR', 'PTT', 'EMG2', 'F3', 'Respiratory Rate', 'Karbondioksit', 'Termistor', 'Pulse', 'LLeg1', 'O2', 'Abdo', 'ROC', 'RLeg2', 'CPAP Press', 'Snore', 'ECG2', 'Chin2', 'LOC', 'Position', 'Airflow', 'CPAP Flow', 'M1', 'F4']
 
-# Load data with selected features and perform binary search for feature selection
+# Load data with selected features and evaluate for each subset of features
 csv_file = "all_channels.csv"
 accuracies = []
-percentages = []
 
-def binary_search_features(selected_features):
-    low = 0.25  # 25%
-    high = 1.0  # 100%
-    
-    while high - low > 0.05:  # Continue until the difference is small enough (5%)
-        mid = (low + high) / 2
-        
-        num_features_all = int(len(selected_features) * high)
-        num_features_mid = int(len(selected_features) * mid)
-        
-        accuracy_all = train_and_evaluate(csv_file, sequence_length, selected_features[:num_features_all])
-        accuracy_mid = train_and_evaluate(csv_file, sequence_length, selected_features[:num_features_mid])
-        
-        accuracies.append((high * 100, accuracy_all))
-        accuracies.append((mid * 100, accuracy_mid))
-        
-        if accuracy_mid > accuracy_all:
-            high = mid  # Choose fewer features if accuracy improves
-        else:
-            low = mid   # Choose more features if accuracy does not improve
-    
-binary_search_features(selected_features)
+for i in range(1, len(selected_features) + 1):
+    accuracy = train_and_evaluate(csv_file, sequence_length, selected_features[:i])
+    accuracies.append((i, accuracy))
+    print(f"Accuracy with {i} features: {accuracy:.4f}")
 
-# Print all accuracies and corresponding percentages of channels used
-for percentage, accuracy in accuracies:
-    print("1D CNN Model:")
-    print(f"Accuracy: {accuracy:.4f} with {percentage:.2f}% of channels")
+# Print all accuracies and corresponding number of features used
+for num_features, accuracy in accuracies:
+    print(f"Accuracy: {accuracy:.4f} with {num_features} features")

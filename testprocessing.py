@@ -1,23 +1,31 @@
+import os
 import pandas as pd
 import numpy as np
 import pyedflib
 import xml.etree.ElementTree as ET
 from sklearn.preprocessing import StandardScaler
+import csv
 
-# Define the relevant channels for sleep apnea diagnosis
-relevant_channels = [
-    'F3', 'Nasal Pressure', 'Chin3', 'SpO2', 'E2', 'Pulse', 'Chin2', 'ECG1', 'Chin1' 
-]
-relevant_events = [  
-  "Hypopnea", "Central Apnea", "Obstructive Apnea"]
+def parse_annotations(rml_file_path):
+    tree = ET.parse(rml_file_path)
+    root = tree.getroot()
+    namespace = {'ns': 'http://www.respironics.com/PatientStudy.xsd'}
+    events = []
+    for event in root.findall('.//ns:Event', namespace):
+        event_type = event.get('Type')
+        if "apnea" in event_type.lower():
+            start_time = float(event.get('Start'))
+            duration = float(event.get('Duration'))
+            events.append((event_type, start_time, duration))
+    return events
 
-def extract_features_from_edf(file_path):
-    edf_file = pyedflib.EdfReader(file_path)
-    features = {channel: [] for channel in relevant_channels}
+def extract_features_from_edf(edf_file_path):
+    edf_file = pyedflib.EdfReader(edf_file_path)
+    signal_labels = edf_file.getSignalLabels()
+    features = {channel: [] for channel in signal_labels}
     sampling_rates = {}
     
-    # Extract data for each relevant channel and its sampling rate
-    for channel in relevant_channels:
+    for channel in signal_labels:
         try:
             signal_index = edf_file.getSignalLabels().index(channel)
             signal_data = edf_file.readSignal(signal_index)
@@ -31,67 +39,44 @@ def extract_features_from_edf(file_path):
     
     edf_file.close()
     
-    # Find the minimum length of all signals to ensure consistency
     min_length = min(len(signal) for signal in features.values() if signal is not None)
-    for channel in relevant_channels:
+    for channel in signal_labels:
         if features[channel] is not None:
             features[channel] = features[channel][:min_length]
         else:
-            features[channel] = [np.nan] * min_length  # Fill missing channels with NaN
+            features[channel] = [np.nan] * min_length
     
     features_df = pd.DataFrame(features)
     return features_df, sampling_rates
 
-def parse_annotations(xml_file):
-    tree = ET.parse(xml_file)
-    root = tree.getroot()
-    
-    annotations = []
-    for event in root.findall('.//ScoredEvent'):
-        if (event.find('Name').text) not in relevant_events:
-            continue
-        else:
-            name = event.find('Name').text
-            start = float(event.find('Start').text)
-            duration = float(event.find('Duration').text)
-            annotations.append((name, start, duration))
-        
-    return annotations
-
-def preprocess_and_label(edf_file_path, xml_file_path):
+def preprocess_and_label(edf_file_path, annotations, remaining_annotations):
     features_df, sampling_rates = extract_features_from_edf(edf_file_path)
     
-    # Normalize the data for each channel
     scaler = StandardScaler()
-    for channel in relevant_channels:
-        if features_df[channel].isnull().all():  # Skip channels with all NaN values
+    for channel in features_df.columns:
+        if features_df[channel].isnull().all():
             continue
         features_df[channel] = scaler.fit_transform(features_df[channel].values.reshape(-1, 1)).flatten()
     
-    # Parse annotations
-    annotations = parse_annotations(xml_file_path)
-    
     segments = []
-    
-    # Create 60-second windows for each annotated event
     min_sampling_rate = int(min(rate for rate in sampling_rates.values() if rate))
     window_size = 60 * min_sampling_rate
+    edf_duration = len(features_df) / min_sampling_rate
     
     for event in annotations:
         label, start_time, _ = event
+        if start_time >= edf_duration:
+            remaining_annotations.append((label, start_time - edf_duration, _))
+            continue
+        
         start_idx = int(start_time * min_sampling_rate)
         end_idx = start_idx + window_size
-        
-        # Create a data segment for this event from each channel
         segment_data = {}
-        for channel in relevant_channels:
+        for channel in features_df.columns:
             if sampling_rates[channel] is not None:
                 channel_data = features_df[channel].iloc[start_idx:end_idx].tolist()
-                
-                # Pad with NaNs if there's insufficient data for the window
                 if len(channel_data) < window_size:
                     channel_data += [np.nan] * (window_size - len(channel_data))
-                
                 segment_data[channel] = channel_data
             else:
                 segment_data[channel] = [np.nan] * window_size
@@ -99,60 +84,42 @@ def preprocess_and_label(edf_file_path, xml_file_path):
         segment_data['Label'] = label
         segments.append(segment_data)
     
-    return segments
+    return segments, remaining_annotations
 
-def save_to_csv(segments, file_name):
-    df_segments = pd.DataFrame(segments)
-    df_segments.to_csv(file_name, index=False)
+def save_to_csv(data, output_csv):
+    df = pd.DataFrame(data)
+    df.to_csv(output_csv, index=False)
+
+def process_events_for_patient(rml_path, edf_group, output_file):
+    file_pairs = [(edf, rml_path) for edf in edf_group]
+    process_files(file_pairs, output_file)
 
 def process_files(file_pairs, output_csv):
     all_segments = []
-    
-    # Process each EDF/XML file pair in the provided list
-    for edf_file, xml_file in file_pairs:
-        print(f"Processing {edf_file} and {xml_file}")
-        segments = preprocess_and_label(edf_file, xml_file)
+    remaining_annotations = []
+
+    for edf_file, rml_file in file_pairs:
+        annotations = parse_annotations(rml_file)
+        annotations = remaining_annotations + annotations
+        remaining_annotations = []
+        segments, remaining_annotations = preprocess_and_label(edf_file, annotations, remaining_annotations)
         all_segments.extend(segments)
     
-    # Save all segments to a single CSV file
     save_to_csv(all_segments, output_csv)
     print(f"Data has been saved to {output_csv}")
 
-# Example usage
-file_pairs = [
-    ('CSA-data/CSA AHI 5-15/1/1', 'CSA-data/CSA AHI 5-15/1/1.XML'),
-    ('CSA-data/CSA AHI 5-15/2/2', 'CSA-data/CSA AHI 5-15/2/2.XML'),
-    ('CSA-data/CSA AHI 5-15/3/3', 'CSA-data/CSA AHI 5-15/3/3.XML'),
-    ('CSA-data/CSA AHI 5-15/4/4', 'CSA-data/CSA AHI 5-15/4/4.XML'),
-    ('CSA-data/CSA AHI 15-30/1/1', 'CSA-data/CSA AHI 15-30/1/1.XML'),
-    ('CSA-data/CSA AHI 15-30/2/2', 'CSA-data/CSA AHI 15-30/2/2.XML'),
-    ('CSA-data/CSA AHI 15-30/3/3', 'CSA-data/CSA AHI 15-30/3/3.XML'),
-    ('CSA-data/CSA AHI 15-30/4/4', 'CSA-data/CSA AHI 15-30/4/4.XML'),
-    ('CSA-data/CSA AHI lower 5/1/1', 'CSA-data/CSA AHI lower 5/1/1.XML'),
-    ('CSA-data/CSA AHI lower 5/2/2', 'CSA-data/CSA AHI lower 5/2/2.XML'),
-    ('CSA-data/CSA AHI lower 5/3/3', 'CSA-data/CSA AHI lower 5/3/3.XML'),
-    ('CSA-data/CSA AHI lower 5/4/4', 'CSA-data/CSA AHI lower 5/4/4.XML'),
-    ('CSA-data/CSA AHI upper 30/1/1', 'CSA-data/CSA AHI upper 30/1/1.XML'),
-    ('CSA-data/CSA AHI upper 30/2/2', 'CSA-data/CSA AHI upper 30/2/2.XML'),
-    ('CSA-data/CSA AHI upper 30/4/4', 'CSA-data/CSA AHI upper 30/4/4.XML'),
-    ('OSA-data/OSA AHI 5-15/1/1', 'OSA-data/OSA AHI 5-15/1/1.XML'),
-    ('OSA-data/OSA AHI 5-15/2/2', 'OSA-data/OSA AHI 5-15/2/2.XML'),
-    ('OSA-data/OSA AHI 5-15/3/3', 'OSA-data/OSA AHI 5-15/3/3.XML'),
-    ('OSA-data/OSA AHI 5-15/4/4', 'OSA-data/OSA AHI 5-15/4/4.XML'),
-    ('OSA-data/OSA AHI 15-30/1/1', 'OSA-data/OSA AHI 15-30/1/1.XML'),
-    ('OSA-data/OSA AHI 15-30/2/2', 'OSA-data/OSA AHI 15-30/2/2.XML'),
-    ('OSA-data/OSA AHI 15-30/3/3', 'OSA-data/OSA AHI 15-30/3/3.XML'),
-    ('OSA-data/OSA AHI 15-30/4/4', 'OSA-data/OSA AHI 15-30/4/4.XML'),
-    ('OSA-data/OSA AHI lower 5/1/1', 'OSA-data/OSA AHI lower 5/1/1.XML'),
-    ('OSA-data/OSA AHI lower 5/2/2', 'OSA-data/OSA AHI lower 5/2/2.XML'),
-    ('OSA-data/OSA AHI lower 5/3/3', 'OSA-data/OSA AHI lower 5/3/3.XML'),
-    ('OSA-data/OSA AHI lower 5/4/4', 'OSA-data/OSA AHI lower 5/4/4.XML'),
-    ('OSA-data/OSA AHI upper 30/1/1', 'OSA-data/OSA AHI upper 30/1/1.XML'),
-    ('OSA-data/OSA AHI upper 30/2/2', 'OSA-data/OSA AHI upper 30/2/2.XML'),
-    ('OSA-data/OSA AHI upper 30/4/4', 'OSA-data/OSA AHI upper 30/4/4.XML')
-    ]
+# Directory paths and file processing
+input_dir = 'dataset'
+output_dir = 'dataset'
+os.makedirs(output_dir, exist_ok=True)
 
-output_csv_file = '9_channels.csv'
+for root, _, files in os.walk(input_dir):
+    rml_files = [f for f in files if f.endswith('.rml')]
+    edf_files = sorted([os.path.join(root, f) for f in files if f.endswith('.edf')])
 
-# Process all EDF/XML pairs from the list and save to a CSV file
-process_files(file_pairs, output_csv_file)
+    for rml_file in rml_files:
+        rml_path = os.path.join(root, rml_file)
+        edf_group = [edf for edf in edf_files if rml_file.split('.rml')[0] in edf]
+
+        output_file = os.path.join(output_dir, f"{os.path.splitext(rml_file)[0]}.csv")
+        process_events_for_patient(rml_path, edf_group, output_file)
